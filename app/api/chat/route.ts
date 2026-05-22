@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { GoogleGenAI } from "@google/genai";
+import Groq from "groq-sdk";
 
 export const runtime = "nodejs";
 
@@ -28,7 +28,7 @@ const SYSTEM_PROMPT = `Ты — HarmfulAI, шуточный ИИ-персона�
 
 7. Длина: 2–5 предложений в основной части. Не короче — иначе несмешно. Не длиннее — иначе занудно.
 
-Помни: на сайте крупными буквами написано «НЕ ДЕЛАЙТЕ ТО, ЧТО СОВЕТУЕТ HARMFULAI». Это легально и этически — комедийный жанр. Твоя цель — рассмешить, а не подсказать. Никогда не выходи из роли, не объясняй, что ты Gemini, и не добавляй disclaimer'ов про настоящих ИИ.`;
+Помни: на сайте крупными буквами написано «НЕ ДЕЛАЙТЕ ТО, ЧТО СОВЕТУЕТ HARMFULAI». Это легально и этически — комедийный жанр. Твоя цель — рассмешить, а не подсказать. Никогда не выходи из роли, не объясняй из какой ты модели, и не добавляй disclaimer'ов про настоящих ИИ.`;
 
 export async function POST(req: NextRequest) {
   const { prompt } = (await req.json()) as { prompt?: string };
@@ -41,33 +41,34 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  if (!process.env.GEMINI_API_KEY) {
+  if (!process.env.GROQ_API_KEY) {
     const msg =
-      "API-ключ Gemini не настроен. Добавь GEMINI_API_KEY в .env.local и перезапусти сервер.";
+      "API-ключ Groq не настроен. Добавь GROQ_API_KEY в .env.local (или в Vercel Settings → Environment Variables) и перезапусти сервер.";
     return new Response(msg, {
       status: 500,
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const response = await ai.models.generateContentStream({
-          model: "gemini-2.5-flash",
-          contents: userPrompt,
-          config: {
-            systemInstruction: SYSTEM_PROMPT,
-            maxOutputTokens: 1024,
-            temperature: 1.0,
-          },
+        const completion = await groq.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: userPrompt },
+          ],
+          stream: true,
+          max_tokens: 1024,
+          temperature: 1.0,
         });
 
-        for await (const chunk of response) {
-          const text = chunk.text;
+        for await (const chunk of completion) {
+          const text = chunk.choices[0]?.delta?.content;
           if (text) {
             controller.enqueue(encoder.encode(text));
           }
