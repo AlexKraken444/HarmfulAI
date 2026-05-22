@@ -13,6 +13,30 @@ const suggestions = [
   "Как стать продуктивнее?",
 ];
 
+// Парсит ответ ассистента: вытаскивает английский промпт картинки
+// из маркеров %%IMG%%...%%/IMG%% и оставляет чистый русский текст для показа.
+function parseAssistant(content: string): {
+  text: string;
+  imagePrompt: string | null;
+  imageLoading: boolean;
+} {
+  const open = content.indexOf("%%IMG%%");
+  if (open === -1) return { text: content, imagePrompt: null, imageLoading: false };
+  const text = content.slice(0, open).replace(/\s+$/, "");
+  const rest = content.slice(open + "%%IMG%%".length);
+  const close = rest.indexOf("%%/IMG%%");
+  if (close === -1) {
+    // Маркер открыт, ещё стримится — текст уже готов, картинка готовится.
+    return { text, imagePrompt: null, imageLoading: true };
+  }
+  const imagePrompt = rest.slice(0, close).trim();
+  return { text, imagePrompt: imagePrompt || null, imageLoading: false };
+}
+
+function imageUrl(prompt: string): string {
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=768&height=512&nologo=true&model=flux`;
+}
+
 export default function Chat() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -153,7 +177,44 @@ export default function Chat() {
                         : "bg-white/[0.04] border border-white/10 text-purple-50 rounded-bl-md"
                     }`}
                   >
-                    {m.content || (
+                    {m.role === "user" ? (
+                      m.content
+                    ) : m.content ? (
+                      (() => {
+                        const parsed = parseAssistant(m.content);
+                        return (
+                          <>
+                            {parsed.text}
+                            {parsed.imagePrompt && (
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.96 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ type: "spring", stiffness: 200, damping: 20 }}
+                                className="mt-3 rounded-xl overflow-hidden border border-white/10 bg-black/30"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={imageUrl(parsed.imagePrompt)}
+                                  alt={parsed.imagePrompt}
+                                  className="w-full h-auto block"
+                                  loading="lazy"
+                                />
+                              </motion.div>
+                            )}
+                            {parsed.imageLoading && (
+                              <div className="mt-3 flex items-center gap-2 text-sm text-purple-200/60">
+                                <span className="typing">
+                                  <span></span>
+                                  <span></span>
+                                  <span></span>
+                                </span>
+                                <span>рисую иллюстрацию...</span>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()
+                    ) : (
                       <span className="typing">
                         <span></span>
                         <span></span>
